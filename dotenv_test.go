@@ -19,7 +19,7 @@ BAZ=qux
 		os.Unsetenv("FOO")
 		os.Unsetenv("BAZ")
 
-		err := load(Options{Paths: []string{"dir"}, RootFs: fs})
+		err := Load(WithPaths("dir"), WithFs(fs))
 		assertNoError(t, err)
 		assertEqual(t, os.Getenv("FOO"), "bar")
 		assertEqual(t, os.Getenv("BAZ"), "qux")
@@ -27,7 +27,7 @@ BAZ=qux
 
 	t.Run("skips missing .env in directory (logs)", func(t *testing.T) {
 		fs := fstest.MapFS{}
-		err := load(Options{Paths: []string{"missing"}, RootFs: fs})
+		err := Load(WithPaths("missing"), WithFs(fs))
 		assertNoError(t, err)
 	})
 
@@ -39,7 +39,7 @@ BAZ=qux
 `)},
 		}
 		os.Unsetenv("KEY")
-		err := load(Options{Paths: []string{"a", "b"}, RootFs: fs})
+		err := Load(WithPaths("a", "b"), WithFs(fs))
 		assertNoError(t, err)
 		assertEqual(t, os.Getenv("KEY"), "2")
 	})
@@ -57,7 +57,7 @@ TITLE=' Sr Dev '
 		os.Unsetenv("NAME")
 		os.Unsetenv("TITLE")
 
-		err := load(Options{Paths: []string{"dir"}, RootFs: fs})
+		err := Load(WithPaths("dir"), WithFs(fs))
 		assertNoError(t, err)
 		assertEqual(t, os.Getenv("HELLO"), "world")
 		assertEqual(t, os.Getenv("NAME"), "John Doe")
@@ -70,7 +70,7 @@ TITLE=' Sr Dev '
 `)},
 		}
 		os.Unsetenv("X")
-		err := load(Options{Paths: []string{"p/.env"}, RootFs: fs})
+		err := Load(WithPaths("p/.env"), WithFs(fs))
 		assertNoError(t, err)
 		assertEqual(t, os.Getenv("X"), "1")
 	})
@@ -84,7 +84,7 @@ TITLE=' Sr Dev '
 		lg := &testLogger{}
 
 		os.Unsetenv("A")
-		err := load(Options{Paths: []string{"missing", "a", "b"}, RootFs: fs, Logger: lg})
+		err := Load(WithPaths("missing", "a", "b"), WithFs(fs), WithLogger(lg))
 		assertNoError(t, err)
 		assertEqual(t, os.Getenv("A"), "1")
 
