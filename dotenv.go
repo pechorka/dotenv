@@ -1,3 +1,9 @@
+// Package dotenv provides a tiny, predictable loader for .env files.
+//
+// It reads simple KEY=VALUE lines, ignoring blank lines and lines starting
+// with '#'. Optional single or double quotes around values are trimmed.
+// When multiple paths are provided, later ones override earlier ones. If a
+// provided path is a directory, ".env" is joined to it.
 package dotenv
 
 import (
@@ -5,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path"
 	"strings"
@@ -18,24 +25,38 @@ type Options struct {
 
 type Option func(*Options)
 
+// WithPaths sets candidate paths (files or directories) to read, in order.
+// If a path is a directory, ".env" is joined. When multiple paths are
+// provided, later ones override earlier ones.
 func WithPaths(paths ...string) Option {
 	return func(o *Options) {
 		o.Paths = paths
 	}
 }
 
+// WithFs sets the filesystem root used to open paths. When not provided, the
+// current directory is used via os.OpenRoot(".").FS()
 func WithFs(rootFs fs.FS) Option {
 	return func(o *Options) {
 		o.RootFs = rootFs
 	}
 }
 
+// Logger is a minimal logger used by Load for informational and warning
+// messages. Bring your own implementation; a no-op logger is used by default.
 type Logger interface {
 	Info(msg string, args ...any)
 	Warn(msg string, args ...any)
 }
 
-func WithLogger(l Logger) Option { return func(o *Options) { o.Logger = l } }
+var _ Logger = &slog.Logger{}
+
+// WithLogger sets a custom logger implementation used during loading.
+func WithLogger(l Logger) Option {
+	return func(o *Options) {
+		o.Logger = l
+	}
+}
 
 func validateOptions(opts Options) error {
 	if len(opts.Paths) == 0 {
@@ -50,6 +71,10 @@ func validateOptions(opts Options) error {
 	return nil
 }
 
+// Load reads .env entries from the configured paths and exports them via
+// os.Setenv. It is safe to call multiple times; later files override
+// earlier ones according to the provided paths.
+// Not found paths will be ignored and logged.
 func Load(userOptions ...Option) error {
 	opts := Options{
 		Paths:  []string{"."},
@@ -60,8 +85,11 @@ func Load(userOptions ...Option) error {
 	}
 
 	if opts.RootFs == nil {
-		// Use the current directory as the default filesystem root.
-		opts.RootFs = os.DirFS(".")
+		root, err := os.OpenRoot(".")
+		if err != nil {
+			return fmt.Errorf("failed to create fs.FS from current directory: %w", err)
+		}
+		opts.RootFs = root.FS()
 	}
 
 	if err := validateOptions(opts); err != nil {
@@ -84,14 +112,12 @@ func load(opts Options) error {
 
 		var envPath string
 		if info.IsDir() {
-			// If it's a directory, join .env and log the action.
 			envPath = path.Join(p, ".env")
 			opts.Logger.Info("directory detected; joining dotenv", "path", p, "dotenv", envPath)
 		} else {
 			envPath = p
 		}
 
-		// If the decided envPath doesn't exist, treat as non-critical and continue.
 		if _, err := fs.Stat(opts.RootFs, envPath); err != nil {
 			if errors.Is(err, fs.ErrNotExist) {
 				opts.Logger.Warn("dotenv not found", "path", envPath)
